@@ -6,6 +6,8 @@ Built as a hackathon project: backend, database, web UI and a live e-commerce in
 
 **Demo video:** _add your link here_
 
+**Technical specification:** [docs/PIMS Technical Specification.pdf](docs/PIMS%20Technical%20Specification.pdf)
+
 ---
 
 ## Table of contents
@@ -98,6 +100,8 @@ pims-woocommerce-sync/
 ├── README.md
 ├── config/
 │   └── config.example.php       # copy to config.php (git-ignored)
+├── docs/
+│   └── PIMS Technical Specification.pdf   # full technical specification
 ├── database/
 │   ├── schema.sql               # tables and constraints
 │   ├── create_user.php          # create a login from the CLI
