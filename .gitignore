@@ -1,0 +1,10 @@
+# Secrets: never commit real credentials
+config/config.php
+.env
+
+# Dependencies and OS/editor noise
+vendor/
+*.log
+.DS_Store
+.idea/
+.vscode/

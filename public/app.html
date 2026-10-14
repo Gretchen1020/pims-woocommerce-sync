@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PIMS</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header id="hdr" class="hidden">
+  <h1>PIMS</h1>
+  <nav>
+    <button data-view="products" class="active">Products</button>
+    <button data-view="categories">Categories</button>
+    <button data-view="attributes">Attributes</button>
+    <button data-view="logs">Sync Logs</button>
+  </nav>
+  <span id="user-email" class="muted" style="font-size:0.85rem"></span>
+  <button class="btn sm" id="btn-logout">Logout</button>
+</header>
+<main id="app"></main>
+<script src="/app.js"></script>
+</body>
+</html>
