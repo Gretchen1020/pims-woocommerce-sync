@@ -4,7 +4,7 @@ An API-first **Product Information Management (PIM)** system built with PHP and 
 
 Built as a hackathon project: backend, database, web UI and a live e-commerce integration.
 
-**Demo video:** _add your link here_
+**Demo video:** [Watch the demo ](https://drive.google.com/file/d/16ceukqp9inGdOOFVkdnkKWi6nvcdK7oI/view?usp=sharing)
 
 **Technical specification:** [docs/PIMS Technical Specification.pdf](docs/PIMS%20Technical%20Specification.pdf)
 

@@ -206,7 +206,7 @@ final class SyncService
 
     // ── Conflict resolution ────────────────────────────────────────────
 
-    /**
+       /**
      * @param array{choices?:array<string,string>, keep_all?:string} $input
      *   choices: field => 'pims'|'woocommerce'
      *   keep_all: 'pims'|'woocommerce'
@@ -220,12 +220,15 @@ final class SyncService
         if ($product['sync_status'] !== 'CONFLICT') {
             throw new HttpException(409, 'not_in_conflict', 'Product is not in CONFLICT status.');
         }
+        if (!$product['woocommerce_id']) {
+            throw new HttpException(409, 'not_synced', 'Product has no WooCommerce ID; cannot resolve.');
+        }
 
         $conflictFields = is_string($product['conflict_fields'])
             ? json_decode($product['conflict_fields'], true)
             : ($product['conflict_fields'] ?? []);
 
-        if (empty($conflictFields)) {
+        if (empty($conflictFields) || !is_array($conflictFields)) {
             throw new HttpException(409, 'no_conflicts', 'No conflict data found.');
         }
 
@@ -246,25 +249,87 @@ final class SyncService
             throw new HttpException(422, 'validation_error', 'Provide choices map or keep_all.');
         }
 
-        // Apply chosen values to PIMS where user picked WooCommerce
+        // 1. Apply WooCommerce values into PIMS for fields the user kept from WC
         $pulls = [];
+        $pimsFields = [];
         foreach ($choices as $field => $choice) {
             if ($choice === 'woocommerce') {
-                $pulls[$field] = $conflictFields[$field]['woocommerce'];
+                $pulls[$field] = $conflictFields[$field]['woocommerce'] ?? null;
+            } else {
+                $pimsFields[] = $field;
             }
-            // If pims, leave PIMS as-is; the next sync will push
         }
         if ($pulls) {
             $this->applyPulls($productId, $pulls, $pulls);
         }
 
-        // Clear conflict so sync can proceed
-        ProductRepository::setSyncStatus($productId, 'NOT_SYNCED');
-        $stmt = Database::connection()->prepare('UPDATE products SET conflict_fields = NULL WHERE id = :id');
+        // 2. Clear conflict state
+        ProductRepository::setSyncStatus($productId, 'SYNCING');
+        $stmt = Database::connection()->prepare(
+            'UPDATE products SET conflict_fields = NULL, last_sync_error = NULL WHERE id = :id'
+        );
         $stmt->execute([':id' => $productId]);
 
-        // Re-run sync
-        return $this->syncProduct($productId);
+        // 3. Force-push PIMS-chosen fields (skip three-way merge so conflict cannot reappear)
+        try {
+            $product = ProductRepository::findById($productId);
+            $wcId = (int) $product['woocommerce_id'];
+
+            if ($pimsFields) {
+                $payload = $this->buildWcPayload($product, isFirstPush: false, onlyFields: $pimsFields);
+            } else {
+                $payload = [];
+            }
+
+            if ($payload) {
+                $updated = $this->wc->updateProduct($wcId, $payload);
+            } else {
+                $updated = $this->wc->getProduct($wcId);
+                if ($updated === null) {
+                    throw new HttpException(404, 'woocommerce_not_found', 'Product no longer exists in WooCommerce.');
+                }
+            }
+
+            $stockFromWc = isset($updated['stock_quantity']) ? (int) $updated['stock_quantity'] : null;
+            $newSnapshot = $this->buildSnapshot($product, $updated);
+
+            $pdo = Database::connection();
+            $pdo->beginTransaction();
+            try {
+                ProductRepository::applySyncSuccess(
+                    $productId,
+                    $wcId,
+                    $newSnapshot,
+                    $payload ? 'push' : 'pull',
+                    $stockFromWc
+                );
+                SyncLogRepository::create(
+                    $productId,
+                    'resolve',
+                    'SUCCESS',
+                    null,
+                    $this->wc->lastHttpStatus
+                );
+                $pdo->commit();
+            } catch (\Throwable $e) {
+                $pdo->rollBack();
+                throw $e;
+            }
+
+            return ProductRepository::findById($productId);
+        } catch (WooCommerceException $e) {
+            ProductRepository::setSyncStatus($productId, 'FAILED', $e->getMessage());
+            SyncLogRepository::create($productId, 'resolve', 'FAILED', $e->getMessage(), $e->httpStatus);
+            throw new HttpException(502, 'woocommerce_error', $e->getMessage());
+        } catch (HttpException $e) {
+            ProductRepository::setSyncStatus($productId, 'FAILED', $e->getMessage());
+            SyncLogRepository::create($productId, 'resolve', 'FAILED', $e->getMessage(), $e->status);
+            throw $e;
+        } catch (\Throwable $e) {
+            ProductRepository::setSyncStatus($productId, 'FAILED', $e->getMessage());
+            SyncLogRepository::create($productId, 'resolve', 'FAILED', $e->getMessage());
+            throw $e;
+        }
     }
 
     // ── Refresh stock ──────────────────────────────────────────────────
